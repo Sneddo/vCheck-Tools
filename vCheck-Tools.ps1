@@ -1,15 +1,84 @@
-Add-Type -AssemblyName presentationframework
+<#
+.SYNOPSIS 
+	This script aims to make configuring an scheduling vCheck easier by 
+	providing a graphical interface.
+.DESCRIPTION
+	The following options can be configured for vCheck:
+		- Plugins
+		- Settings
+		- Scheduled Task
+		
+	Possible other options:
+		- Config Backup/Restore (for vCheck and Plugins)
+		- Updates (Plugin and vCheck Core)
+		- ???
+.NOTES 
+   File Name  : vCheck-Tools.ps1 
+   Author     : John Sneddon - @JohnSneddonAU
+   Version    : 0.1
+  
+.INPUTS
+   No inputs required
+.OUTPUTS
+   No outputs
+#>
+################################################################################
+#                                INITIALISATION                                #
+################################################################################
+# Initialise any required variables
+$ScriptPath = (Split-Path ((Get-Variable MyInvocation).Value).MyCommand.Path)
 
+################################################################################
+#                                 REQUIREMENTS                                 #
+################################################################################
+# Load all requirements for the script here
+# Adding PowerCLI core snapin
+if (!(Get-PSSnapin -name VMware.VimAutomation.Core -erroraction silentlycontinue)) {
+	Add-PSSnapin VMware.VimAutomation.Core
+}
+
+# Include vCheckUtils (for now - merge this eventually
+ . .\vCheckUtils.ps1 | Out-Null
+ 
+# Add WPF Type
+Add-Type -AssemblyName PresentationFramework
+
+################################################################################
+#                                   LANGUAGE                                   #
+################################################################################
+$l = DATA {
+    ConvertFrom-StringData @'
+		XAMLError = Unable to load Windows.Markup.XamlReader. Some possible causes for this problem include: .NET Framework is missing PowerShell must be launched with PowerShell -sta, invalid XAML code was encountered.
+'@ }
+# If a localized version is available, overwrite the defaults
+Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -ErrorAction SilentlyContinue
+
+################################################################################
+#                                     GUI                                      #
+################################################################################
+# Use XAML to define the form, data to be populated in code
 [xml]$XAML = @"
 	<Window
 		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 		Height="500" Width="500" Title="vCheck Tools">
-	
+		<Window.Resources>
+			<Style TargetType="Label">
+				<Setter Property="Height" Value="30" />
+				<Setter Property="Width" Value="170" />
+				<Setter Property="Background" Value="#0A77BA" />
+				<Setter Property="Foreground" Value="White" />
+				<Setter Property="VerticalAlignment" Value="Top" />
+				<Setter Property="HorizontalAlignment" Value="Left" />
+			</Style>
+			<BitmapImage x:Key="masterImage" UriSource="c:/temp/vcheck/Styles/VMware/Header.jpg" />
+			<CroppedBitmap x:Key="croppedImage" Source="{StaticResource masterImage}" SourceRect="0 0 246 108"/>
+		</Window.Resources>
 		<DockPanel>
-			<DockPanel DockPanel.Dock="Top">
-				<Image Width="200" Source="c:\temp\vCheck\Styles\VMware\Header.jpg"/>
-				<Label FontSize="16" FontWeight="Bold" Content="Tools" Background="#0A77BA" Foreground="White" Height="55" VerticalAlignment="Center" />
+			<DockPanel DockPanel.Dock="Top" Background="#0A77BA" >
+				<Image Source="{StaticResource croppedImage}" Width="123" Height="54"/>
+				<Label FontSize="18" FontWeight="Bold" Padding="0 17 0 17" Content="vCheck Tools" Height="54" VerticalAlignment="Center"/>
+				<Label FontSize="10"  Content="by John Sneddon - @JohnSneddonAU" Padding="0 10 0 0" VerticalAlignment="Bottom" HorizontalAlignment="Right" />
 			</DockPanel>
 			
 			<DockPanel DockPanel.Dock="Bottom" Margin="5">
@@ -30,29 +99,27 @@ Add-Type -AssemblyName presentationframework
 						<RowDefinition Height="5" />
 						<RowDefinition Height="30" />  
 					</Grid.RowDefinitions>  
-						<Label Content="Powershell Version" HorizontalAlignment="Left" Grid.Row="0" Grid.Column="0" VerticalAlignment="Top" Height="30" Width="170" Background="#0A77BA" Foreground="White"/>
+						<Label Content="Powershell Version" Grid.Row="0" Grid.Column="0" />
 						<TextBox Name="txtPowershellVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="0" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" />
-						<Label Content="PowerCLI Version" HorizontalAlignment="Left" Grid.Row="2" Grid.Column="0"  VerticalAlignment="Top" Height="30" Width="170" Background="#0A77BA" Foreground="White"/>
+						<Label Content="PowerCLI Version" Grid.Row="2" Grid.Column="0" />
 						<TextBox Name="txtPowerCLIVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
-						<Label Content="vCheck Version" HorizontalAlignment="Left" Grid.Row="4" Grid.Column="0"  VerticalAlignment="Top" Height="30" Width="170" Background="#0A77BA" Foreground="White"/>
+						<Label Content="vCheck Version" Grid.Row="4" Grid.Column="0" />
 						<TextBox Name="txtvCheckVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="4" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
 					</Grid>
 				</TabItem>
 				
 				<TabItem Name="tab_vCheckConfig" Header="Configure">
-					<Grid Name="grid_Config" Margin="0,0,-0.2,0.2">
-						<Grid.ColumnDefinitions>  
-							<ColumnDefinition Width="175"/>  
-							<ColumnDefinition />  
-						</Grid.ColumnDefinitions> 
-						<Grid.RowDefinitions>  
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition MinHeight="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-						</Grid.RowDefinitions>
-					</Grid>
+					<DockPanel>
+						<ScrollViewer>
+							<Grid Name="grid_Config" Margin="0,0,-0.2,0.2">
+								<Grid.ColumnDefinitions>  
+									<ColumnDefinition Width="175"/>  
+									<ColumnDefinition />  
+								</Grid.ColumnDefinitions> 
+							</Grid>
+						</ScrollViewer>
+					</DockPanel>
+
 				</TabItem>
 				
 				<TabItem Name="tab_vCheckPugins" Header="Plugins">
@@ -72,9 +139,9 @@ Add-Type -AssemblyName presentationframework
 							<RowDefinition Height="5" />
 							<RowDefinition Height="30" />  
 						</Grid.RowDefinitions>
-						<Label Content="Start Time" HorizontalAlignment="Left" Grid.Row="0" Grid.Column="0" VerticalAlignment="Top" Height="30" Width="170" Background="#0A77BA" Foreground="White"/>
+						<Label Content="Start Time" Grid.Row="0" Grid.Column="0" />
 						<DatePicker Name="SchDate" HorizontalAlignment="Stretch" Height="30"  Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" />
-						<Label Content="Recurrance" HorizontalAlignment="Left" Grid.Row="2" Grid.Column="0" VerticalAlignment="Top" MinHeight="30" Width="170" Background="#0A77BA" Foreground="White"/>
+						<Label Content="Recurrance" Grid.Row="2" Grid.Column="0" />
 						<StackPanel Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch">
 							<RadioButton GroupName="recurrance" Content="None" IsChecked="True"/>
 							<RadioButton GroupName="recurrance" Content="Daily" />
@@ -88,49 +155,113 @@ Add-Type -AssemblyName presentationframework
 	</Window>
 "@
 
-# Add Snapin
-Add-PSSnapin  VMware.VimAutomation.Core
-
 #Read XAML
 $reader=(New-Object System.Xml.XmlNodeReader $xaml) 
-try{$Form=[Windows.Markup.XamlReader]::Load( $reader )}
-catch{Write-Host "Unable to load Windows.Markup.XamlReader. Some possible causes for this problem include: .NET Framework is missing PowerShell must be launched with PowerShell -sta, invalid XAML code was encountered."; exit}
- 
-#===========================================================================
-# Store Form Objects In PowerShell
-#===========================================================================
+Try{$Form=[Windows.Markup.XamlReader]::Load( $reader )}
+Catch{Write-Error $l.XAMLError; exit}
+
+# Read form controls into Powershell Objects for ease of maodifcation
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)}
 
-#===========================================================================
-# Add events to Form Objects
-#===========================================================================
+################################################################################
+#                                    EVENTS                                    #
+################################################################################
+# Exit Button Clicked
 $btn_Exit.Add_Click({$form.Close()})
 
-#===========================================================================
-# Populate Tabs
-#===========================================================================
-# Add content - Info 
+
+################################################################################
+#                                POPULATE FORM                                 #
+################################################################################
+#------------------------------------ INFO ------------------------------------#
 $txtPowershellVer.Text = $host.Version.Tostring()
 $txtPowerCLIVer.Text = (Get-PowerCLIVersion).UserFriendlyVersion -replace "VMware vSphere PowerCLI", ""
 $txtvCheckVer.Text = ((Get-Content ("{0}\vCheck.ps1" -f $pwd) | Select-String -Pattern "\$+Version\s=").toString().split("=")[1]).Trim(' "')
 
-# Add content - Plugins
-. .\vCheckUtils.ps1 | Out-Null
+#----------------------------------- PLUGINS ----------------------------------#
 $Plugins = Get-VCheckPlugin 
-$collection = new-object System.Collections.ObjectModel.ObservableCollection[Object] #New-Object System.Collections.ArrayList
+$collection = new-object System.Collections.ObjectModel.ObservableCollection[Object]
 $Plugins | %{ $collection.add( ($_ | Select Status, Name, Version) ) }
 $grid_Plugins.itemssource = $collection
 
-# Add Content - Configure
-$label = new-object System.Windows.Controls.Label
-$label.Content = "blah"
-$label.HorizontalAlignment = "Left"
-$label.VerticalAlignment="Top" 
-$label.Height="30" 
-$label.Width="170" 
-$label.Background="#0A77BA" 
-$label.Foreground="White"
+#----------------------------------- CONFIG -----------------------------------#
+$row = 0
+
+$RowDef = new-object System.Windows.Controls.RowDefinition
+$RowDef.Height = "30"
+$grid_Config.RowDefinitions.Add($RowDef)
+$RowDef = new-object System.Windows.Controls.RowDefinition
+$RowDef.Height = "5"
+$grid_Config.RowDefinitions.Add($RowDef)
+$label = New-Object System.Windows.Controls.Label
+$label.Content = "GlobalVariables"
+$label.Background="#1D6325"
+$label.Width="500"
+$label.HorizontalAlignment="Stretch"
+$label.HorizontalContentAlignment="Stretch"
 $grid_Config.Children.Add($label) | Out-Null
+[Windows.Controls.Grid]::SetRow($label,$row)
+[Windows.Controls.Grid]::SetColumn($label,0)
+[Windows.Controls.Grid]::SetColumnSpan($label,2)
+		
+$file = Get-Content "GlobalVariables.ps1"
+$OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
+$EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
+$row=$row+2
+if (!(($OriginalLine +1) -eq $EndLine)) {
+	$Array = @()
+	$Line = $OriginalLine
+
+	do {
+		$Question = $file[$Line]
+		Write-Debug ("Line {0}: {1}" -f $Line, $Question)
+		$Line ++
+		$Split= ($file[$Line]).Split("=")
+		$Var = ($Split[0] -replace "\$", "").Trim()
+		$CurSet = $Split[1].Trim()
+		
+		# Check if the current setting is in speech marks
+		$String = $false
+		if ($CurSet -match '"') {
+			$String = $true
+			$CurSet = $CurSet.Replace('"', '')
+		}
+		
+		$RowDef = new-object System.Windows.Controls.RowDefinition
+		$RowDef.Height = "30"
+		$grid_Config.RowDefinitions.Add($RowDef)
+		
+		Write-Debug ("   Row {0}: {1}={2}" -f $row, $Var, $CurSet)
+		$label = new-object System.Windows.Controls.Label
+		$label.Content = $Var
+		$grid_Config.Children.Add($label) | Out-Null
+		[Windows.Controls.Grid]::SetRow($label,$row)
+		[Windows.Controls.Grid]::SetColumn($label,0)
+
+		$TextBox = new-object System.Windows.Controls.TextBox
+		$TextBox.Name = "txt"+$Var
+		$TextBox.Text = $CurSet
+		$TextBox.HorizontalAlignment = "Stretch"
+		$TextBox.VerticalAlignment="Top" 
+		$TextBox.Height="30" 
+		[Windows.Controls.Grid]::SetRow($TextBox,$row)
+		[Windows.Controls.Grid]::SetColumn($TextBox,1)
+		$grid_Config.Children.Add($TextBox) | Out-Null
+		
+		$RowDef = new-object System.Windows.Controls.RowDefinition
+		$RowDef.Height = "5"
+		$grid_Config.RowDefinitions.Add($RowDef)
+		
+		$Line++
+		$row=$row+2
+		
+	} Until ( $Line -ge ($EndLine -1) )
+}
+#---------------------------------- SCHEDULE ----------------------------------#
 
 
+
+################################################################################
+#                                    DISPLAY                                   #
+################################################################################
 $Form.ShowDialog() | out-null
