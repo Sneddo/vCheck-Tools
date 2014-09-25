@@ -64,14 +64,13 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 		Height="500" Width="500" Title="vCheck Tools">
 		<Window.Resources>
 			<Style TargetType="Label">
-				<Setter Property="Height" Value="30" />
-				<Setter Property="Width" Value="170" />
+				<Setter Property="Height" Value="30" />			
 				<Setter Property="Background" Value="#0A77BA" />
 				<Setter Property="Foreground" Value="White" />
 				<Setter Property="VerticalAlignment" Value="Top" />
 				<Setter Property="HorizontalAlignment" Value="Left" />
 			</Style>
-			<BitmapImage x:Key="masterImage" UriSource="c:/temp/vcheck/Styles/VMware/Header.jpg" />
+			<BitmapImage x:Key="masterImage" UriSource="{PATH}\Styles\VMware\Header.jpg" />
 			<CroppedBitmap x:Key="croppedImage" Source="{StaticResource masterImage}" SourceRect="0 0 246 108"/>
 		</Window.Resources>
 		<DockPanel>
@@ -99,11 +98,11 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 						<RowDefinition Height="5" />
 						<RowDefinition Height="30" />  
 					</Grid.RowDefinitions>  
-						<Label Content="Powershell Version" Grid.Row="0" Grid.Column="0" />
+						<Label Content="Powershell Version" Width="170" Grid.Row="0" Grid.Column="0" />
 						<TextBox Name="txtPowershellVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="0" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" />
-						<Label Content="PowerCLI Version" Grid.Row="2" Grid.Column="0" />
+						<Label Content="PowerCLI Version" Width="170" Grid.Row="2" Grid.Column="0" />
 						<TextBox Name="txtPowerCLIVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
-						<Label Content="vCheck Version" Grid.Row="4" Grid.Column="0" />
+						<Label Content="vCheck Version" Width="170" Grid.Row="4" Grid.Column="0" />
 						<TextBox Name="txtvCheckVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="4" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
 					</Grid>
 				</TabItem>
@@ -139,9 +138,9 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 							<RowDefinition Height="5" />
 							<RowDefinition Height="30" />  
 						</Grid.RowDefinitions>
-						<Label Content="Start Time" Grid.Row="0" Grid.Column="0" />
+						<Label Content="Start Time" Width="170" Grid.Row="0" Grid.Column="0" />
 						<DatePicker Name="SchDate" HorizontalAlignment="Stretch" Height="30"  Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" />
-						<Label Content="Recurrance" Grid.Row="2" Grid.Column="0" />
+						<Label Content="Recurrance" Width="170" Grid.Row="2" Grid.Column="0" />
 						<StackPanel Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch">
 							<RadioButton GroupName="recurrance" Content="None" IsChecked="True"/>
 							<RadioButton GroupName="recurrance" Content="Daily" />
@@ -154,6 +153,8 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 		</DockPanel>
 	</Window>
 "@
+
+$xaml.Window.'Window.Resources'.BitmapImage.UriSource = $xaml.Window.'Window.Resources'.BitmapImage.UriSource -replace "{PATH}", $ScriptPath
 
 #Read XAML
 $reader=(New-Object System.Xml.XmlNodeReader $xaml) 
@@ -196,7 +197,6 @@ $grid_Config.RowDefinitions.Add($RowDef)
 $label = New-Object System.Windows.Controls.Label
 $label.Content = "GlobalVariables"
 $label.Background="#1D6325"
-$label.Width="500"
 $label.HorizontalAlignment="Stretch"
 $label.HorizontalContentAlignment="Stretch"
 $grid_Config.Children.Add($label) | Out-Null
@@ -218,14 +218,7 @@ if (!(($OriginalLine +1) -eq $EndLine)) {
 		$Line ++
 		$Split= ($file[$Line]).Split("=")
 		$Var = ($Split[0] -replace "\$", "").Trim()
-		$CurSet = $Split[1].Trim()
-		
-		# Check if the current setting is in speech marks
-		$String = $false
-		if ($CurSet -match '"') {
-			$String = $true
-			$CurSet = $CurSet.Replace('"', '')
-		}
+		$CurSet = $Split[1].Replace('"', '').Trim()
 		
 		$RowDef = new-object System.Windows.Controls.RowDefinition
 		$RowDef.Height = "30"
@@ -234,6 +227,7 @@ if (!(($OriginalLine +1) -eq $EndLine)) {
 		Write-Debug ("   Row {0}: {1}={2}" -f $row, $Var, $CurSet)
 		$label = new-object System.Windows.Controls.Label
 		$label.Content = $Var
+		$label.Width="170"
 		$grid_Config.Children.Add($label) | Out-Null
 		[Windows.Controls.Grid]::SetRow($label,$row)
 		[Windows.Controls.Grid]::SetColumn($label,0)
