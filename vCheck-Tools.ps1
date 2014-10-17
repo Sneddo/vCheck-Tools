@@ -143,7 +143,7 @@ function Get-vCheckPlugin
             $pluginObject | Add-Member -MemberType NoteProperty -Name Description -value $localPluginDesc
             $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $localPluginAuthor
             $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $localPluginVersion
-			$pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $localPluginCategory
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $localPluginCategory
             $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Installed"
             $pluginObject | Add-Member -MemberType NoteProperty -Name Location -Value $LocalpluginFile.name
             $pluginObjectList += $pluginObject
@@ -178,7 +178,7 @@ function Get-vCheckPlugin
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Description -value $plugin.description
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $plugin.author
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $plugin.version
-						$pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $plugin.category
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $plugin.category
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Not Installed"
                         $pluginObject | Add-Member -MemberType NoteProperty -name Location -value $plugin.href
                         $pluginObjectList += $pluginObject
@@ -335,12 +335,12 @@ function Get-vCheckPlugin
 							<RowDefinition Height="5" />
 						</Grid.RowDefinitions>
 						<Label Content="File" Width="170" Grid.Row="0" Grid.Column="0" />
-						<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
-							<TextBox Name="txtBackupLoc" Height="30" Width="200" TextWrapping="Wrap" Text="" VerticalAlignment="Top" />
-							<Button Name="btn_BackupBrowse" Height="30" Width="60" Content="Browse..." VerticalAlignment="Top" />
-						</StackPanel>
+						<DockPanel Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch" >
+							<Button Name="btn_BackupBrowse" Height="30" Width="60" DockPanel.Dock="Right" Content="Browse..." VerticalAlignment="Top" />
+                     <TextBox Name="txtBackupLoc" Height="30" HorizontalAlignment="Stretch" TextWrapping="Wrap" Text="" VerticalAlignment="Top" />
+						</DockPanel>
                   <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
-                     <Button Name="btn_BackupExport" Height="30" Width="60" Content="Export" VerticalAlignment="Top" />
+                     <Button Name="btn_BackupExport" Height="30" Width="60" Margin="0, 0, 5, 0" Content="Export" VerticalAlignment="Top" />
                      <Button Name="btn_BackupImport" Height="30" Width="60" Content="Import" VerticalAlignment="Top" />
                   </StackPanel>
 					</Grid>
@@ -422,7 +422,7 @@ if (!(($OriginalLine +1) -eq $EndLine)) {
 		[Windows.Controls.Grid]::SetRow($label,$row)
 		[Windows.Controls.Grid]::SetColumn($label,0)
 
-		$TextBox = new-object System.Windows.Controls.TextBox
+		$TextBox = New-Object System.Windows.Controls.TextBox
 		$TextBox.Name = "txt"+$Var
 		$TextBox.Text = $CurSet
 		$TextBox.HorizontalAlignment = "Stretch"
@@ -447,15 +447,148 @@ $txtSchTimeHour.Text = (Get-Date).Hour.ToString()
 $txtSchTimeMin.Text = (Get-Date).Minute.ToString()
 $SchDate.SelectedDate = (Get-Date)
 #----------------------------------- BACKUP -----------------------------------#
+# Function to handle Browse Button Click
 function Get-FileName($initialDirectory)
 {   
 	[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
 
 	$OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
 	$OpenFileDialog.initialDirectory = $initialDirectory
-	$OpenFileDialog.filter = "All files (*.*)| *.*"
+   $OpenFileDialog.AddExtension = $true 
+   $OpenFileDialog.CheckFileExists = $false
+   $OpenFileDialog.FileName = "vCheckSettings.csv"
+	$OpenFileDialog.filter = "vCheck Backup| *.csv"
 	$OpenFileDialog.ShowDialog() | Out-Null
+   #vCheckSettings.csv
 	$txtBackupLoc.Text = $OpenFileDialog.filename.ToString()
+}
+
+Function Get-PluginSettings {
+	Param
+    (
+        [Parameter(mandatory=$true)] [String]$filename
+    )
+	$psettings = @()
+	$file = Get-Content $filename
+	$OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
+	$EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
+	if (!(($OriginalLine +1) -eq $EndLine)) {		
+		$Line = $OriginalLine		
+		do {
+			$Question = $file[$Line]
+			$Line ++
+			$Split= ($file[$Line]).Split("=")
+			$Var = $Split[0]
+			$CurSet = $Split[1]			
+			$settings = @{}
+			$settings.filename = $filename
+			$settings.question = $Question
+			$settings.var = $CurSet
+			$currentsetting = New-Object -TypeName PSObject -Prop $settings
+			$psettings += $currentsetting
+			$Line ++ 
+		} Until ( $Line -ge ($EndLine -1) )
+	}
+	$psettings
+}
+
+Function Set-PluginSettings {	
+	Param
+    (
+        [Parameter(mandatory=$true)] [String]$filename,
+		[Parameter(mandatory=$false)] [Array]$settings,
+		[Parameter(mandatory=$false)] [Switch]$GB
+    )
+	$file = Get-Content $filename
+	$OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
+	$EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
+	$PluginName = ($filename.split("\")[-1]).split(".")[0]
+	Write-Verbose "`nProcessing - $PluginName"
+	if (!(($OriginalLine +1) -eq $EndLine)) {
+		$Array = @()
+		$Line = $OriginalLine
+		do {
+			$Question = $file[$Line]
+			$Found = $false
+			$Line ++
+			$Split= ($file[$Line]).Split("=")
+			$Var = $Split[0]
+			$CurSet = $Split[1].Trim()
+			Foreach ($setting in $settings) {
+				If ($question -eq $setting.question) {	
+					$NewSet = $setting.var
+					$Found = $true
+				}
+			}
+			If (!$Found) {
+				# Check if the current setting is in speech marks
+				$String = $false
+				if ($CurSet -match '"') {
+					$String = $true
+					$CurSet = $CurSet.Replace('"', '').Trim()
+				}
+				$NewSet = Read-Host "$Question [$CurSet]"
+				If (-not $NewSet) {
+					$NewSet = $CurSet
+				}
+				If ($String) {
+					$NewSet = "`"$NewSet`""
+				}
+			}
+			$Array += $Question
+			$Array += "$Var= $NewSet"
+			$Line ++ 
+		} Until ( $Line -ge ($EndLine -1) )
+		$Array += "# End of Settings"
+
+		$out = @()
+		$out = $File[0..($OriginalLine -1)]
+		$out += $Array
+		$out += $File[$Endline..($file.count -1)]
+		If ($GB) {
+			$Setup = ($file | Select-String -Pattern '# Set the following to true to enable the setup wizard for first time run').LineNumber
+			$SetupLine = $Setup ++
+			$out[$SetupLine] = '$SetupWizard = $False'
+		}
+		$out | Out-File $filename
+	}
+}
+
+Function Export-vCheckSettings {
+	Param
+    (
+        [Parameter(mandatory=$false)] [String]$outfile = "$vCheckPath\vCheckSettings.csv"
+    )
+	
+	$Export = @()
+	$GlobalVariables = "$vCheckPath\GlobalVariables.ps1"
+	$Export = Get-PluginSettings -Filename $GlobalVariables
+	Foreach ($plugin in (Get-ChildItem -Path $vCheckPath\Plugins\* -Include *.ps1, *.ps1.disabled -Recurse)) { 
+		$Export += Get-PluginSettings -Filename $plugin.Fullname
+	}
+	$Export | Select filename, question, var | Export-Csv -NoTypeInformation $outfile
+   
+   (new-object -ComObject wscript.shell).Popup("Export Completed",0,"vCheck Export")
+}
+
+Function Import-vCheckSettings {
+	Param
+    (
+        [Parameter(mandatory=$false)] [String]$csvfile = "$vCheckPath\vCheckSettings.csv"
+    )
+	
+	If (!(Test-Path $csvfile)) {
+		$csvfile = Read-Host "Enter full path to settings CSV file you want to import"
+	}
+	$Import = Import-Csv $csvfile
+	$GlobalVariables = "$vCheckPath\GlobalVariables.ps1"
+	$settings = $Import | Where {($_.filename).Split("\")[-1] -eq ($GlobalVariables).Split("\")[-1]}
+	Set-PluginSettings -Filename $GlobalVariables -Settings $settings -GB
+	Foreach ($plugin in (Get-ChildItem -Path $vCheckPath\Plugins\* -Include *.ps1, *.ps1.disabled -Recurse)) { 
+		$settings = $Import | Where {($_.filename).Split("\")[-1] -eq ($plugin.Fullname).Split("\")[-1]}
+		Set-PluginSettings -Filename $plugin.Fullname -Settings $settings
+	}
+	(new-object -ComObject wscript.shell).Popup("Import Completed",0,"vCheck Import")
 }
 ################################################################################
 #                                    EVENTS                                    #
@@ -463,8 +596,8 @@ function Get-FileName($initialDirectory)
 # Exit Button Clicked
 $btn_Exit.Add_Click({$form.Close()})
 $btn_BackupBrowse.Add_Click({Get-FileName $ScriptPath})
-$btn_BackupExport.Add_Click({})
-$btn_BackupImport.Add_Click({})
+$btn_BackupExport.Add_Click({Export-vCheckSettings $txtBackupLoc.Text})
+$btn_BackupImport.Add_Click({Import-vCheckSettings $txtBackupLoc.Text})
 $btn_Schedule.Add_Click({})
 
 ################################################################################
