@@ -26,7 +26,13 @@
 #                                INITIALISATION                                #
 ################################################################################
 # Initialise any required variables
-$ScriptPath = (Split-Path ((Get-Variable MyInvocation).Value).MyCommand.Path)
+$ScriptPath = (Split-Path ((Get-Variable MyInvocation).Value).MyCommand.Path)+"\vCheck"
+$vCheckPath = $ScriptPath
+
+$pluginXMLURL = "https://raw.github.com/alanrenouf/vCheck-vSphere/master/plugins.xml"
+$pluginURL = "https://raw.github.com/alanrenouf/vCheck-{0}/master/Plugins/{1}"
+
+$ToolsVersion = 0.1
 
 ################################################################################
 #                                 REQUIREMENTS                                 #
@@ -38,7 +44,7 @@ if (!(Get-PSSnapin -name VMware.VimAutomation.Core -erroraction silentlycontinue
 }
 
 # Include vCheckUtils (for now - merge this eventually
- . .\vCheckUtils.ps1 | Out-Null
+ #. "$ScriptPath\vCheckUtils.ps1" | Out-Null
  
 # Add WPF Type
 Add-Type -AssemblyName PresentationFramework
@@ -53,6 +59,155 @@ $l = DATA {
 # If a localized version is available, overwrite the defaults
 Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -ErrorAction SilentlyContinue
 
+################################################################################
+#                                  FUNCTIONS                                   #
+################################################################################
+ <#
+.SYNOPSIS
+   Retrieves installed vCheck plugins and available plugins from the Virtu-Al.net repository.
+
+.DESCRIPTION
+   Get-vCheckPlugin parses your vCheck plugins folder, as well as searches the online plugin respository on Github.
+   After finding the plugin you are looking for, you can download and install it with Add-vCheckPlugin. Get-vCheckPlugins
+   also supports finding a plugin by name. Future version will support categories (e.g. Datastore, Security, vCloud)
+     
+.PARAMETER name
+   Name of the plugin.
+
+.PARAMETER proxy
+   URL for proxy usage.
+
+.EXAMPLE
+   Get list of all vCheck Plugins
+   Get-vCheckPlugin
+
+.EXAMPLE
+   Get plugin by name
+   Get-vCheckPlugin PluginName
+
+.EXAMPLE
+   Get plugin by name using proxy
+   Get-vCheckPlugin PluginName -proxy "http://127.0.0.1:3128"
+
+
+.EXAMPLE
+   Get plugin information
+   Get-vCheckPlugins PluginName
+ #>
+function Get-vCheckPlugin
+{
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(mandatory=$false)] [String]$name,
+        [Parameter(mandatory=$false)] [String]$proxy,
+        [Parameter(mandatory=$false)] [Switch]$installed,
+        [Parameter(mandatory=$false)] [Switch]$notinstalled,
+        [Parameter(mandatory=$false)] [String]$category
+    )
+    Process
+    {
+        $pluginObjectList = @()
+
+        foreach ($localPluginFile in (Get-ChildItem -Path $vCheckPath\Plugins\* -Include *.ps1, *.ps1.disabled))
+        {
+            $localPluginContent = Get-Content $localPluginFile
+            
+            if ($localPluginContent | Select-String -pattern "title")
+            {
+                $localPluginName = ($localPluginContent | Select-String -pattern "Title").toString().split("""")[1]
+            }
+            if($localPluginContent | Select-String -pattern "description")
+            {
+                $localPluginDesc = ($localPluginContent | Select-String -pattern "description").toString().split("""")[1]
+            }
+            elseif ($localPluginContent | Select-String -pattern "comments")
+            {
+                $localPluginDesc = ($localPluginContent | Select-String -pattern "comments").toString().split("""")[1]
+            }
+            if ($localPluginContent | Select-String -pattern "author")
+            {
+                $localPluginAuthor = ($localPluginContent | Select-String -pattern "author").toString().split("""")[1]
+            }
+            if ($localPluginContent | Select-String -pattern "PluginVersion")
+            {
+                $localPluginVersion = @($localPluginContent | Select-String -pattern "PluginVersion")[0].toString().split(" ")[-1]
+            }
+			if ($localPluginContent | Select-String -pattern "PluginCategory")
+            {
+                $localPluginCategory = @($localPluginContent | Select-String -pattern "PluginCategory")[0].toString().split("""")[1]
+            }
+
+            $pluginObject = New-Object PSObject
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Name -value $localPluginName
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Description -value $localPluginDesc
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $localPluginAuthor
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $localPluginVersion
+			$pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $localPluginCategory
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Installed"
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Location -Value $LocalpluginFile.name
+            $pluginObjectList += $pluginObject
+        }
+
+        if (!$installed)
+        {
+            try
+            {
+                $webClient = new-object system.net.webclient
+				if ($proxy)
+				{
+					$proxyURL = new-object System.Net.WebProxy $proxy
+					$proxyURL.UseDefaultCredentials = $true
+					$webclient.proxy = $proxyURL
+				}
+                $response = $webClient.openread($pluginXMLURL)
+                $streamReader = new-object system.io.streamreader $response
+                [xml]$plugins = $streamReader.ReadToEnd()
+
+                foreach ($plugin in $plugins.pluginlist.plugin)
+                {
+                    $current = $pluginObjectList | where {$_.name -eq $plugin.name}					
+					If ($current -and [double]$current.version -lt [double]$plugin.version) {
+						$index = $pluginObjectList.Indexof($current)
+						$pluginObjectList[$index].status = "New Version Available - " + $plugin.version						
+					}
+					if (!($pluginObjectList | where {$_.name -eq $plugin.name}))
+                    {
+                        $pluginObject = New-Object PSObject
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Name -value $plugin.name
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Description -value $plugin.description
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $plugin.author
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $plugin.version
+						$pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $plugin.category
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Not Installed"
+                        $pluginObject | Add-Member -MemberType NoteProperty -name Location -value $plugin.href
+                        $pluginObjectList += $pluginObject
+                    }
+                }
+            }
+            catch [System.Net.WebException]
+            {
+                write-error $_.Exception.ToString()
+                return
+            }
+        }
+
+        if ($name){
+            $pluginObjectList | where {$_.name -eq $name}
+        } Else {
+			if ($category){
+				$pluginObjectList | Where {$_.Category -eq $category}
+			} Else {
+	            if($notinstalled){
+	                $pluginObjectList | where {$_.status -eq "Not Installed"}
+	            } else {
+	                $pluginObjectList
+	            }
+	        }
+		}
+    }
+
+}
 ################################################################################
 #                                     GUI                                      #
 ################################################################################
@@ -125,7 +280,7 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 					<DataGrid Name="grid_Plugins" AutoGenerateColumns="true"/>
 				</TabItem>
 
-				<TabItem Name="tab_vCheckTask" Header="Schedule vCheck">
+				<TabItem Name="tab_vCheckTask" Header="Schedule">
 					<Grid Margin="0,0,-0.2,0.2">
 						<Grid.ColumnDefinitions>  
 							<ColumnDefinition Width="175"/>  
@@ -134,19 +289,60 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 						<Grid.RowDefinitions>  
 							<RowDefinition Height="30" />  
 							<RowDefinition Height="5" />
-							<RowDefinition MinHeight="30" />  
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="65" />  
 							<RowDefinition Height="5" />
 							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />							
 						</Grid.RowDefinitions>
-						<Label Content="Start Time" Width="170" Grid.Row="0" Grid.Column="0" />
+						<Label Content="Start Date" Width="170" Grid.Row="0" Grid.Column="0" />
 						<DatePicker Name="SchDate" HorizontalAlignment="Stretch" Height="30"  Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" />
-						<Label Content="Recurrance" Width="170" Grid.Row="2" Grid.Column="0" />
-						<StackPanel Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch">
+						<Label Content="Start Time" Width="170" Grid.Row="2" Grid.Column="0" />
+						<StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" >
+							<TextBox Name="txtSchTimeHour" Height="30" Width="30" TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
+							<TextBox Name="txtSchTimeMin" Height="30" Width="30"  TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
+						</StackPanel>
+						<Label Content="Recurrance" Width="170" Height="65" Grid.Row="4" Grid.Column="0" />
+						<StackPanel Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch">
 							<RadioButton GroupName="recurrance" Content="None" IsChecked="True"/>
 							<RadioButton GroupName="recurrance" Content="Daily" />
 							<RadioButton GroupName="recurrance" Content="Weekly" />
-							<RadioButton GroupName="recurrance" Content="Monthly 7" />
+							<RadioButton GroupName="recurrance" Content="Monthly" />
 						</StackPanel>
+						<Label Content="Username" Width="170" Grid.Row="6" Grid.Column="0" />
+						<TextBox Name="txtSchUser" Height="30" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
+						<Label Content="Password" Width="170" Grid.Row="8" Grid.Column="0" />
+						<PasswordBox x:Name="txtSchPass" Grid.Row="8" Grid.Column="1" HorizontalAlignment="Stretch"  />
+						<Button Name="btn_Schedule" Grid.Row="10" Grid.Column="1" Content="Create Task" Height="30" BorderThickness="0"/>
+					</Grid>
+				</TabItem>
+				
+				<TabItem Name="tab_vCheckBackup" Header="Backup/Restore">
+					<Grid Margin="0,0,-0.2,0.2">
+						<Grid.ColumnDefinitions>  
+							<ColumnDefinition Width="175"/>  
+							<ColumnDefinition />  
+						</Grid.ColumnDefinitions>  
+						<Grid.RowDefinitions>  
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+						</Grid.RowDefinitions>
+						<Label Content="File" Width="170" Grid.Row="0" Grid.Column="0" />
+						<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
+							<TextBox Name="txtBackupLoc" Height="30" Width="200" TextWrapping="Wrap" Text="" VerticalAlignment="Top" />
+							<Button Name="btn_BackupBrowse" Height="30" Width="60" Content="Browse..." VerticalAlignment="Top" />
+						</StackPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
+                     <Button Name="btn_BackupExport" Height="30" Width="60" Content="Export" VerticalAlignment="Top" />
+                     <Button Name="btn_BackupImport" Height="30" Width="60" Content="Import" VerticalAlignment="Top" />
+                  </StackPanel>
 					</Grid>
 				</TabItem>
 			</TabControl>
@@ -154,6 +350,7 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 	</Window>
 "@
 
+# Populate form inputs
 $xaml.Window.'Window.Resources'.BitmapImage.UriSource = $xaml.Window.'Window.Resources'.BitmapImage.UriSource -replace "{PATH}", $ScriptPath
 
 #Read XAML
@@ -165,22 +362,15 @@ Catch{Write-Error $l.XAMLError; exit}
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)}
 
 ################################################################################
-#                                    EVENTS                                    #
-################################################################################
-# Exit Button Clicked
-$btn_Exit.Add_Click({$form.Close()})
-
-
-################################################################################
 #                                POPULATE FORM                                 #
 ################################################################################
 #------------------------------------ INFO ------------------------------------#
 $txtPowershellVer.Text = $host.Version.Tostring()
 $txtPowerCLIVer.Text = (Get-PowerCLIVersion).UserFriendlyVersion -replace "VMware vSphere PowerCLI", ""
-$txtvCheckVer.Text = ((Get-Content ("{0}\vCheck.ps1" -f $pwd) | Select-String -Pattern "\$+Version\s=").toString().split("=")[1]).Trim(' "')
+$txtvCheckVer.Text = ((Get-Content ("{0}\vCheck.ps1" -f $ScriptPath) | Select-String -Pattern "\$+Version\s=").toString().split("=")[1]).Trim(' "')
 
 #----------------------------------- PLUGINS ----------------------------------#
-$Plugins = Get-VCheckPlugin 
+$Plugins = Get-vCheckPlugin 
 $collection = new-object System.Collections.ObjectModel.ObservableCollection[Object]
 $Plugins | %{ $collection.add( ($_ | Select Status, Name, Version) ) }
 $grid_Plugins.itemssource = $collection
@@ -204,7 +394,7 @@ $grid_Config.Children.Add($label) | Out-Null
 [Windows.Controls.Grid]::SetColumn($label,0)
 [Windows.Controls.Grid]::SetColumnSpan($label,2)
 		
-$file = Get-Content "GlobalVariables.ps1"
+$file = Get-Content "$ScriptPath\GlobalVariables.ps1"
 $OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
 $EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
 $row=$row+2
@@ -252,8 +442,30 @@ if (!(($OriginalLine +1) -eq $EndLine)) {
 	} Until ( $Line -ge ($EndLine -1) )
 }
 #---------------------------------- SCHEDULE ----------------------------------#
+$txtSchUser.Text = ("{0}\{1}" -f $env:USERDOMAIN, $env:Username).ToString()
+$txtSchTimeHour.Text = (Get-Date).Hour.ToString()
+$txtSchTimeMin.Text = (Get-Date).Minute.ToString()
+$SchDate.SelectedDate = (Get-Date)
+#----------------------------------- BACKUP -----------------------------------#
+function Get-FileName($initialDirectory)
+{   
+	[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
 
-
+	$OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+	$OpenFileDialog.initialDirectory = $initialDirectory
+	$OpenFileDialog.filter = "All files (*.*)| *.*"
+	$OpenFileDialog.ShowDialog() | Out-Null
+	$txtBackupLoc.Text = $OpenFileDialog.filename.ToString()
+}
+################################################################################
+#                                    EVENTS                                    #
+################################################################################
+# Exit Button Clicked
+$btn_Exit.Add_Click({$form.Close()})
+$btn_BackupBrowse.Add_Click({Get-FileName $ScriptPath})
+$btn_BackupExport.Add_Click({})
+$btn_BackupImport.Add_Click({})
+$btn_Schedule.Add_Click({})
 
 ################################################################################
 #                                    DISPLAY                                   #
