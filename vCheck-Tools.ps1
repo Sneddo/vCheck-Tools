@@ -42,9 +42,6 @@ $ToolsVersion = 0.1
 if (!(Get-PSSnapin -name VMware.VimAutomation.Core -erroraction silentlycontinue)) {
 	Add-PSSnapin VMware.VimAutomation.Core
 }
-
-# Include vCheckUtils (for now - merge this eventually
- #. "$ScriptPath\vCheckUtils.ps1" | Out-Null
  
 # Add WPF Type
 Add-Type -AssemblyName PresentationFramework
@@ -54,7 +51,7 @@ Add-Type -AssemblyName PresentationFramework
 ################################################################################
 $l = DATA {
     ConvertFrom-StringData @'
-		XAMLError = Unable to load Windows.Markup.XamlReader. Some possible causes for this problem include: .NET Framework is missing PowerShell must be launched with PowerShell -sta, invalid XAML code was encountered.
+		XAMLError = Unable to load XAML: .NET Framework is missing or invalid XAML code was encountered.
 '@ }
 # If a localized version is available, overwrite the defaults
 Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -ErrorAction SilentlyContinue
@@ -62,6 +59,11 @@ Import-LocalizedData -BaseDirectory ($ScriptPath + "\lang") -bindingVariable l -
 ################################################################################
 #                                  FUNCTIONS                                   #
 ################################################################################
+ 
+ function Get-PluginDetail
+ {
+   write-host $grid_Plugins.Rows[$grid_Plugins.SelectedCells[0].RowIndex]
+ }
  <#
 .SYNOPSIS
    Retrieves installed vCheck plugins and available plugins from the Virtu-Al.net repository.
@@ -109,7 +111,7 @@ function Get-vCheckPlugin
     {
         $pluginObjectList = @()
 
-        foreach ($localPluginFile in (Get-ChildItem -Path $vCheckPath\Plugins\* -Include *.ps1, *.ps1.disabled))
+        foreach ($localPluginFile in (Get-ChildItem -Path $vCheckPath\Plugins\* -Include *.ps1, *.ps1.disabled -Recurse))
         {
             $localPluginContent = Get-Content $localPluginFile
             
@@ -144,7 +146,7 @@ function Get-vCheckPlugin
             $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $localPluginAuthor
             $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $localPluginVersion
             $pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $localPluginCategory
-            $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Installed"
+            $pluginObject | Add-Member -MemberType NoteProperty -Name Enabled -value ($localPluginFile.name -match "\.ps1$")
             $pluginObject | Add-Member -MemberType NoteProperty -Name Location -Value $LocalpluginFile.name
             $pluginObjectList += $pluginObject
         }
@@ -179,7 +181,7 @@ function Get-vCheckPlugin
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Author -value $plugin.author
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Version -value $plugin.version
                         $pluginObject | Add-Member -MemberType NoteProperty -Name Category -Value $plugin.category
-                        $pluginObject | Add-Member -MemberType NoteProperty -Name Status -value "Not Installed"
+                        $pluginObject | Add-Member -MemberType NoteProperty -Name Enabled -value $false
                         $pluginObject | Add-Member -MemberType NoteProperty -name Location -value $plugin.href
                         $pluginObjectList += $pluginObject
                     }
@@ -208,245 +210,7 @@ function Get-vCheckPlugin
     }
 
 }
-################################################################################
-#                                     GUI                                      #
-################################################################################
-# Use XAML to define the form, data to be populated in code
-[xml]$XAML = @"
-	<Window
-		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Height="500" Width="500" Title="vCheck Tools">
-		<Window.Resources>
-			<Style TargetType="Label">
-				<Setter Property="Height" Value="30" />			
-				<Setter Property="Background" Value="#0A77BA" />
-				<Setter Property="Foreground" Value="White" />
-				<Setter Property="VerticalAlignment" Value="Top" />
-				<Setter Property="HorizontalAlignment" Value="Left" />
-			</Style>
-			<BitmapImage x:Key="masterImage" UriSource="{PATH}\Styles\VMware\Header.jpg" />
-			<CroppedBitmap x:Key="croppedImage" Source="{StaticResource masterImage}" SourceRect="0 0 246 108"/>
-		</Window.Resources>
-		<DockPanel>
-			<DockPanel DockPanel.Dock="Top" Background="#0A77BA" >
-				<Image Source="{StaticResource croppedImage}" Width="123" Height="54"/>
-				<Label FontSize="18" FontWeight="Bold" Padding="0 17 0 17" Content="vCheck Tools" Height="54" VerticalAlignment="Center"/>
-				<Label FontSize="10"  Content="by John Sneddon - @JohnSneddonAU" Padding="0 10 0 0" VerticalAlignment="Bottom" HorizontalAlignment="Right" />
-			</DockPanel>
-			
-			<DockPanel DockPanel.Dock="Bottom" Margin="5">
-				<Button Name="btn_Exit" Content="Exit" Height="34" BorderThickness="0"/>
-			</DockPanel>
-			
-			<TabControl TabStripPlacement="Top" Margin="0">
-				<TabItem Name="tab_vCheckInfo" Header="Information">
-					<Grid Margin="0,0,-0.2,0.2">
-					<Grid.ColumnDefinitions>  
-						<ColumnDefinition Width="175"/>  
-						<ColumnDefinition />  
-					</Grid.ColumnDefinitions>  
-					<Grid.RowDefinitions>  
-						<RowDefinition Height="30" />  
-						<RowDefinition Height="5" />
-						<RowDefinition Height="30" />  
-						<RowDefinition Height="5" />
-						<RowDefinition Height="30" />  
-					</Grid.RowDefinitions>  
-						<Label Content="Powershell Version" Width="170" Grid.Row="0" Grid.Column="0" />
-						<TextBox Name="txtPowershellVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="0" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" />
-						<Label Content="PowerCLI Version" Width="170" Grid.Row="2" Grid.Column="0" />
-						<TextBox Name="txtPowerCLIVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
-						<Label Content="vCheck Version" Width="170" Grid.Row="4" Grid.Column="0" />
-						<TextBox Name="txtvCheckVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="4" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
-					</Grid>
-				</TabItem>
-				
-				<TabItem Name="tab_vCheckConfig" Header="Configure">
-					<DockPanel>
-						<ScrollViewer>
-							<Grid Name="grid_Config" Margin="0,0,-0.2,0.2">
-								<Grid.ColumnDefinitions>  
-									<ColumnDefinition Width="175"/>  
-									<ColumnDefinition />  
-								</Grid.ColumnDefinitions> 
-							</Grid>
-						</ScrollViewer>
-					</DockPanel>
 
-				</TabItem>
-				
-				<TabItem Name="tab_vCheckPugins" Header="Plugins">
-					<DataGrid Name="grid_Plugins" AutoGenerateColumns="true"/>
-				</TabItem>
-
-				<TabItem Name="tab_vCheckTask" Header="Schedule">
-					<Grid Margin="0,0,-0.2,0.2">
-						<Grid.ColumnDefinitions>  
-							<ColumnDefinition Width="175"/>  
-							<ColumnDefinition />  
-						</Grid.ColumnDefinitions>  
-						<Grid.RowDefinitions>  
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="65" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />							
-						</Grid.RowDefinitions>
-						<Label Content="Start Date" Width="170" Grid.Row="0" Grid.Column="0" />
-						<DatePicker Name="SchDate" HorizontalAlignment="Stretch" Height="30"  Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" />
-						<Label Content="Start Time" Width="170" Grid.Row="2" Grid.Column="0" />
-						<StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" >
-							<TextBox Name="txtSchTimeHour" Height="30" Width="30" TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
-							<TextBox Name="txtSchTimeMin" Height="30" Width="30"  TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
-						</StackPanel>
-						<Label Content="Recurrance" Width="170" Height="65" Grid.Row="4" Grid.Column="0" />
-						<StackPanel Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch">
-							<RadioButton GroupName="recurrance" Content="None" IsChecked="True"/>
-							<RadioButton GroupName="recurrance" Content="Daily" />
-							<RadioButton GroupName="recurrance" Content="Weekly" />
-							<RadioButton GroupName="recurrance" Content="Monthly" />
-						</StackPanel>
-						<Label Content="Username" Width="170" Grid.Row="6" Grid.Column="0" />
-						<TextBox Name="txtSchUser" Height="30" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
-						<Label Content="Password" Width="170" Grid.Row="8" Grid.Column="0" />
-						<PasswordBox x:Name="txtSchPass" Grid.Row="8" Grid.Column="1" HorizontalAlignment="Stretch"  />
-						<Button Name="btn_Schedule" Grid.Row="10" Grid.Column="1" Content="Create Task" Height="30" BorderThickness="0"/>
-					</Grid>
-				</TabItem>
-				
-				<TabItem Name="tab_vCheckBackup" Header="Backup/Restore">
-					<Grid Margin="0,0,-0.2,0.2">
-						<Grid.ColumnDefinitions>  
-							<ColumnDefinition Width="175"/>  
-							<ColumnDefinition />  
-						</Grid.ColumnDefinitions>  
-						<Grid.RowDefinitions>  
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-							<RowDefinition Height="30" />  
-							<RowDefinition Height="5" />
-						</Grid.RowDefinitions>
-						<Label Content="File" Width="170" Grid.Row="0" Grid.Column="0" />
-						<DockPanel Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch" >
-							<Button Name="btn_BackupBrowse" Height="30" Width="60" DockPanel.Dock="Right" Content="Browse..." VerticalAlignment="Top" />
-                     <TextBox Name="txtBackupLoc" Height="30" HorizontalAlignment="Stretch" TextWrapping="Wrap" Text="" VerticalAlignment="Top" />
-						</DockPanel>
-                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
-                     <Button Name="btn_BackupExport" Height="30" Width="60" Margin="0, 0, 5, 0" Content="Export" VerticalAlignment="Top" />
-                     <Button Name="btn_BackupImport" Height="30" Width="60" Content="Import" VerticalAlignment="Top" />
-                  </StackPanel>
-					</Grid>
-				</TabItem>
-			</TabControl>
-		</DockPanel>
-	</Window>
-"@
-
-# Populate form inputs
-$xaml.Window.'Window.Resources'.BitmapImage.UriSource = $xaml.Window.'Window.Resources'.BitmapImage.UriSource -replace "{PATH}", $ScriptPath
-
-#Read XAML
-$reader=(New-Object System.Xml.XmlNodeReader $xaml) 
-Try{$Form=[Windows.Markup.XamlReader]::Load( $reader )}
-Catch{Write-Error $l.XAMLError; exit}
-
-# Read form controls into Powershell Objects for ease of maodifcation
-$xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)}
-
-################################################################################
-#                                POPULATE FORM                                 #
-################################################################################
-#------------------------------------ INFO ------------------------------------#
-$txtPowershellVer.Text = $host.Version.Tostring()
-$txtPowerCLIVer.Text = (Get-PowerCLIVersion).UserFriendlyVersion -replace "VMware vSphere PowerCLI", ""
-$txtvCheckVer.Text = ((Get-Content ("{0}\vCheck.ps1" -f $ScriptPath) | Select-String -Pattern "\$+Version\s=").toString().split("=")[1]).Trim(' "')
-
-#----------------------------------- PLUGINS ----------------------------------#
-$Plugins = Get-vCheckPlugin 
-$collection = new-object System.Collections.ObjectModel.ObservableCollection[Object]
-$Plugins | %{ $collection.add( ($_ | Select Status, Name, Version) ) }
-$grid_Plugins.itemssource = $collection
-
-#----------------------------------- CONFIG -----------------------------------#
-$row = 0
-
-$RowDef = new-object System.Windows.Controls.RowDefinition
-$RowDef.Height = "30"
-$grid_Config.RowDefinitions.Add($RowDef)
-$RowDef = new-object System.Windows.Controls.RowDefinition
-$RowDef.Height = "5"
-$grid_Config.RowDefinitions.Add($RowDef)
-$label = New-Object System.Windows.Controls.Label
-$label.Content = "GlobalVariables"
-$label.Background="#1D6325"
-$label.HorizontalAlignment="Stretch"
-$label.HorizontalContentAlignment="Stretch"
-$grid_Config.Children.Add($label) | Out-Null
-[Windows.Controls.Grid]::SetRow($label,$row)
-[Windows.Controls.Grid]::SetColumn($label,0)
-[Windows.Controls.Grid]::SetColumnSpan($label,2)
-		
-$file = Get-Content "$ScriptPath\GlobalVariables.ps1"
-$OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
-$EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
-$row=$row+2
-if (!(($OriginalLine +1) -eq $EndLine)) {
-	$Array = @()
-	$Line = $OriginalLine
-
-	do {
-		$Question = $file[$Line]
-		Write-Debug ("Line {0}: {1}" -f $Line, $Question)
-		$Line ++
-		$Split= ($file[$Line]).Split("=")
-		$Var = ($Split[0] -replace "\$", "").Trim()
-		$CurSet = $Split[1].Replace('"', '').Trim()
-		
-		$RowDef = new-object System.Windows.Controls.RowDefinition
-		$RowDef.Height = "30"
-		$grid_Config.RowDefinitions.Add($RowDef)
-		
-		Write-Debug ("   Row {0}: {1}={2}" -f $row, $Var, $CurSet)
-		$label = new-object System.Windows.Controls.Label
-		$label.Content = $Var
-		$label.Width="170"
-		$grid_Config.Children.Add($label) | Out-Null
-		[Windows.Controls.Grid]::SetRow($label,$row)
-		[Windows.Controls.Grid]::SetColumn($label,0)
-
-		$TextBox = New-Object System.Windows.Controls.TextBox
-		$TextBox.Name = "txt"+$Var
-		$TextBox.Text = $CurSet
-		$TextBox.HorizontalAlignment = "Stretch"
-		$TextBox.VerticalAlignment="Top" 
-		$TextBox.Height="30" 
-		[Windows.Controls.Grid]::SetRow($TextBox,$row)
-		[Windows.Controls.Grid]::SetColumn($TextBox,1)
-		$grid_Config.Children.Add($TextBox) | Out-Null
-		
-		$RowDef = new-object System.Windows.Controls.RowDefinition
-		$RowDef.Height = "5"
-		$grid_Config.RowDefinitions.Add($RowDef)
-		
-		$Line++
-		$row=$row+2
-		
-	} Until ( $Line -ge ($EndLine -1) )
-}
-#---------------------------------- SCHEDULE ----------------------------------#
-$txtSchUser.Text = ("{0}\{1}" -f $env:USERDOMAIN, $env:Username).ToString()
-$txtSchTimeHour.Text = (Get-Date).Hour.ToString()
-$txtSchTimeMin.Text = (Get-Date).Minute.ToString()
-$SchDate.SelectedDate = (Get-Date)
-#----------------------------------- BACKUP -----------------------------------#
 # Function to handle Browse Button Click
 function Get-FileName($initialDirectory)
 {   
@@ -590,15 +354,285 @@ Function Import-vCheckSettings {
 	}
 	(new-object -ComObject wscript.shell).Popup("Import Completed",0,"vCheck Import")
 }
+
+Function Set-GlobalVariables {
+		$out = @()
+		$out = $File[0..($OriginalLine -1)]
+		$out += $array
+		$out += $File[$Endline..($file.count -1)]
+		if ($GB) { $out[$SetupLine] = '$SetupWizard = $False' }
+		$out | Out-File $Filename
+}
+
+################################################################################
+#                                     GUI                                      #
+################################################################################
+# Use XAML to define the form, data to be populated in code
+[xml]$XAML_Main = @"
+	<Window
+		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		Height="500" Width="500" Title="vCheck Tools">
+		<Window.Resources>
+			<Style TargetType="Label">
+				<Setter Property="Height" Value="30" />			
+				<Setter Property="Background" Value="#0A77BA" />
+				<Setter Property="Foreground" Value="White" />
+				<Setter Property="VerticalAlignment" Value="Top" />
+				<Setter Property="HorizontalAlignment" Value="Left" />
+			</Style>
+			<BitmapImage x:Key="masterImage" UriSource="{PATH}\Styles\VMware\Header.jpg" />
+			<CroppedBitmap x:Key="croppedImage" Source="{StaticResource masterImage}" SourceRect="0 0 246 108"/>
+		</Window.Resources>
+		<DockPanel>
+			<DockPanel DockPanel.Dock="Top" Background="#0A77BA" >
+				<Image Source="{StaticResource croppedImage}" Width="123" Height="54"/>
+				<Label FontSize="18" FontWeight="Bold" Padding="0 17 0 17" Content="vCheck Tools" Height="54" VerticalAlignment="Center"/>
+				<Label FontSize="10"  Content="by John Sneddon - @JohnSneddonAU" Padding="0 10 0 0" VerticalAlignment="Bottom" HorizontalAlignment="Right" />
+			</DockPanel>
+			
+			<TabControl TabStripPlacement="Top" Margin="0">
+				<TabItem Name="tab_vCheckInfo" Header="Information">
+					<Grid Margin="0,0,-0.2,0.2">
+					<Grid.ColumnDefinitions>  
+						<ColumnDefinition Width="175"/>  
+						<ColumnDefinition />  
+					</Grid.ColumnDefinitions>  
+					<Grid.RowDefinitions>  
+						<RowDefinition Height="30" />  
+						<RowDefinition Height="5" />
+						<RowDefinition Height="30" />  
+						<RowDefinition Height="5" />
+						<RowDefinition Height="30" />  
+					</Grid.RowDefinitions>  
+						<Label Content="Powershell Version" Width="170" Grid.Row="0" Grid.Column="0" />
+						<TextBox Name="txtPowershellVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="0" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" />
+						<Label Content="PowerCLI Version" Width="170" Grid.Row="2" Grid.Column="0" />
+						<TextBox Name="txtPowerCLIVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
+						<Label Content="vCheck Version" Width="170" Grid.Row="4" Grid.Column="0" />
+						<TextBox Name="txtvCheckVer" HorizontalAlignment="Stretch" Height="30" Grid.Row="4" Grid.Column="1"  TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsEnabled="False" /> 
+					</Grid>
+				</TabItem>
+				
+				<TabItem Name="tab_vCheckConfig" Header="Configure">
+               <DockPanel>
+                  <DockPanel DockPanel.Dock="Bottom" Margin="5">
+                     <Button Name="btn_Save" Content="Save" Height="34" BorderThickness="0"/>
+                  </DockPanel>
+						<ScrollViewer>
+							<Grid Name="grid_Config" Margin="0,0,-0.2,0.2">
+								<Grid.ColumnDefinitions>  
+									<ColumnDefinition Width="175"/>  
+									<ColumnDefinition />  
+								</Grid.ColumnDefinitions> 
+							</Grid>
+						</ScrollViewer>
+					</DockPanel>
+				</TabItem>
+				
+				<TabItem Name="tab_vCheckPugins" Header="Plugins">
+					<DockPanel>
+                  <DockPanel DockPanel.Dock="Bottom" Margin="5">
+                     <Button Name="btn_SelectAll" Content="Select All" Height="34" BorderThickness="0"/>
+                     <Button Name="btn_CheckUpdate" Content="Check for Updates" Height="34" BorderThickness="0"/>
+                  </DockPanel>
+                  <DataGrid Name="grid_Plugins" AutoGenerateColumns="False" CanUserAddRows="false" ColumnWidth="*">
+                     <DataGrid.Columns>
+                        <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" Width="60" />
+                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Version" Binding="{Binding Version}" IsReadOnly="True" Width="50" />
+                     </DataGrid.Columns>
+                  </DataGrid>
+               </DockPanel>
+				</TabItem>
+<!--
+				<TabItem Name="tab_vCheckTask" Header="Schedule">
+					<Grid Margin="0,0,-0.2,0.2">
+						<Grid.ColumnDefinitions>  
+							<ColumnDefinition Width="175"/>  
+							<ColumnDefinition />  
+						</Grid.ColumnDefinitions>  
+						<Grid.RowDefinitions>  
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="65" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />							
+						</Grid.RowDefinitions>
+						<Label Content="Start Date" Width="170" Grid.Row="0" Grid.Column="0" />
+						<DatePicker Name="SchDate" HorizontalAlignment="Stretch" Height="30"  Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" />
+						<Label Content="Start Time" Width="170" Grid.Row="2" Grid.Column="0" />
+						<StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" >
+							<TextBox Name="txtSchTimeHour" Height="30" Width="30" TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
+							<TextBox Name="txtSchTimeMin" Height="30" Width="30"  TextWrapping="Wrap" Text="00" VerticalAlignment="Top" />
+						</StackPanel>
+						<Label Content="Recurrance" Width="170" Height="65" Grid.Row="4" Grid.Column="0" />
+						<StackPanel Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch">
+							<RadioButton GroupName="recurrance" Content="None" IsChecked="True"/>
+							<RadioButton GroupName="recurrance" Content="Daily" />
+							<RadioButton GroupName="recurrance" Content="Weekly" />
+							<RadioButton GroupName="recurrance" Content="Monthly" />
+						</StackPanel>
+						<Label Content="Username" Width="170" Grid.Row="6" Grid.Column="0" />
+						<TextBox Name="txtSchUser" Height="30" Grid.Row="6" Grid.Column="1" TextWrapping="Wrap" Text="" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
+						<Label Content="Password" Width="170" Grid.Row="8" Grid.Column="0" />
+						<PasswordBox x:Name="txtSchPass" Grid.Row="8" Grid.Column="1" HorizontalAlignment="Stretch"  />
+						<Button Name="btn_Schedule" Grid.Row="10" Grid.Column="1" Content="Create Task" Height="30" BorderThickness="0"/>
+					</Grid>
+				</TabItem>
+-->				
+				<TabItem Name="tab_vCheckBackup" Header="Backup/Restore">
+					<Grid Margin="0,0,-0.2,0.2">
+						<Grid.ColumnDefinitions>  
+							<ColumnDefinition Width="175"/>  
+							<ColumnDefinition />  
+						</Grid.ColumnDefinitions>  
+						<Grid.RowDefinitions>  
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+							<RowDefinition Height="30" />  
+							<RowDefinition Height="5" />
+						</Grid.RowDefinitions>
+						<Label Content="File" Width="170" Grid.Row="0" Grid.Column="0" />
+						<DockPanel Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch" >
+							<Button Name="btn_BackupBrowse" Height="30" Width="60" DockPanel.Dock="Right" Content="Browse..." VerticalAlignment="Top" />
+                     <TextBox Name="txtBackupLoc" Height="30" HorizontalAlignment="Stretch" TextWrapping="Wrap" Text="" VerticalAlignment="Top" />
+						</DockPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Stretch" >
+                     <Button Name="btn_BackupExport" Height="30" Width="60" Margin="0, 0, 5, 0" Content="Export" VerticalAlignment="Top" />
+                     <Button Name="btn_BackupImport" Height="30" Width="60" Content="Import" VerticalAlignment="Top" />
+                  </StackPanel>
+					</Grid>
+				</TabItem>
+			</TabControl>
+		</DockPanel>
+	</Window>
+"@
+
+# Populate form inputs
+$XAML_Main.Window.'Window.Resources'.BitmapImage.UriSource = $XAML_Main.Window.'Window.Resources'.BitmapImage.UriSource -replace "{PATH}", $ScriptPath
+
+#Read XAML
+$reader=(New-Object System.Xml.XmlNodeReader $XAML_Main) 
+Try{$Form=[Windows.Markup.XamlReader]::Load( $reader )}
+Catch{Write-Error $l.XAMLError; exit}
+
+# Read form controls into Powershell Objects for ease of maodifcation
+$XAML_Main.SelectNodes("//*[@Name]") | %{Set-Variable -Name ($_.Name) -Value $Form.FindName($_.Name)}
+
+################################################################################
+#                                POPULATE FORM                                 #
+################################################################################
+#------------------------------------ INFO ------------------------------------#
+$txtPowershellVer.Text = $host.Version.Tostring()
+$txtPowerCLIVer.Text = (Get-PowerCLIVersion).UserFriendlyVersion -replace "VMware vSphere PowerCLI", ""
+$txtvCheckVer.Text = ((Get-Content ("{0}\vCheck.ps1" -f $ScriptPath) | Select-String -Pattern "\$+vCheckVersion\s=").toString().split("=")[1]).Trim(' "')
+
+#----------------------------------- PLUGINS ----------------------------------#
+$Plugins = Get-vCheckPlugin -installed
+
+$array = New-Object System.Collections.ArrayList
+$Script:pluginInfo = $Plugins | Select Enabled, Name, Version
+$array.AddRange($pluginInfo)
+$grid_Plugins.itemssource = $array
+
+#----------------------------------- CONFIG -----------------------------------#
+$row = 0
+
+$RowDef = new-object System.Windows.Controls.RowDefinition
+$RowDef.Height = "30"
+$grid_Config.RowDefinitions.Add($RowDef)
+$RowDef = new-object System.Windows.Controls.RowDefinition
+$RowDef.Height = "5"
+$grid_Config.RowDefinitions.Add($RowDef)
+$label = New-Object System.Windows.Controls.Label
+$label.Content = "GlobalVariables"
+$label.Background="#1D6325"
+$label.HorizontalAlignment="Stretch"
+$label.HorizontalContentAlignment="Stretch"
+$grid_Config.Children.Add($label) | Out-Null
+[Windows.Controls.Grid]::SetRow($label,$row)
+[Windows.Controls.Grid]::SetColumn($label,0)
+[Windows.Controls.Grid]::SetColumnSpan($label,2)
+		
+$file = Get-Content "$ScriptPath\GlobalVariables.ps1"
+$OriginalLine = ($file | Select-String -Pattern "# Start of Settings").LineNumber
+$EndLine = ($file | Select-String -Pattern "# End of Settings").LineNumber
+$row=$row+2
+if (!(($OriginalLine +1) -eq $EndLine)) {
+	$Array = @()
+	$Line = $OriginalLine
+
+	do {
+		$Question = $file[$Line]
+		Write-Debug ("Line {0}: {1}" -f $Line, $Question)
+		$Line ++
+		$Split= ($file[$Line]).Split("=")
+		$Var = ($Split[0] -replace "\$", "").Trim()
+		$CurSet = $Split[1].Replace('"', '').Trim()
+		
+		$RowDef = new-object System.Windows.Controls.RowDefinition
+		$RowDef.Height = "30"
+		$grid_Config.RowDefinitions.Add($RowDef)
+		
+		Write-Debug ("   Row {0}: {1}={2}" -f $row, $Var, $CurSet)
+		$label = new-object System.Windows.Controls.Label
+		$label.Content = $Var
+		$label.Width="170"
+		$grid_Config.Children.Add($label) | Out-Null
+		[Windows.Controls.Grid]::SetRow($label,$row)
+		[Windows.Controls.Grid]::SetColumn($label,0)
+
+		$TextBox = New-Object System.Windows.Controls.TextBox
+		$TextBox.Name = "txt"+$Var
+		$TextBox.Text = $CurSet
+		$TextBox.HorizontalAlignment = "Stretch"
+		$TextBox.VerticalAlignment="Top" 
+		$TextBox.Height="30" 
+		[Windows.Controls.Grid]::SetRow($TextBox,$row)
+		[Windows.Controls.Grid]::SetColumn($TextBox,1)
+		$grid_Config.Children.Add($TextBox) | Out-Null
+		
+		$RowDef = new-object System.Windows.Controls.RowDefinition
+		$RowDef.Height = "5"
+		$grid_Config.RowDefinitions.Add($RowDef)
+		
+		$Line++
+		$row=$row+2
+		
+	} Until ( $Line -ge ($EndLine -1) )
+}
+#---------------------------------- SCHEDULE ----------------------------------#
+# Pre-populate fields on Schedule tab
+#$txtSchUser.Text = ("{0}\{1}" -f $env:USERDOMAIN, $env:Username).ToString()
+#$txtSchTimeHour.Text = (Get-Date).Hour.ToString()
+#$txtSchTimeMin.Text = (Get-Date).Minute.ToString()
+#$SchDate.SelectedDate = (Get-Date)
+#----------------------------------- BACKUP -----------------------------------#
+# Nothing to do on Backup TabControl
+
 ################################################################################
 #                                    EVENTS                                    #
 ################################################################################
-# Exit Button Clicked
-$btn_Exit.Add_Click({$form.Close()})
+# Add Save button handler
+$btn_Save.Add_Click({Set-GlobalVariables})
+
+#$Add_DoubleClick({Get-PluginDetail} )
+
+# Add Backup tab button actions
 $btn_BackupBrowse.Add_Click({Get-FileName $ScriptPath})
 $btn_BackupExport.Add_Click({Export-vCheckSettings $txtBackupLoc.Text})
 $btn_BackupImport.Add_Click({Import-vCheckSettings $txtBackupLoc.Text})
-$btn_Schedule.Add_Click({})
+
+# Add schedule action
+#$btn_Schedule.Add_Click({})
 
 ################################################################################
 #                                    DISPLAY                                   #
