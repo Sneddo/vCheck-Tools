@@ -364,6 +364,14 @@ Function Set-GlobalVariables {
 		$out | Out-File $Filename
 }
 
+
+function Set-PluginsChecked {
+   param ([bool]$State)
+   Write-Host "asdrfasdf"
+   
+   
+
+}
 ################################################################################
 #                                     GUI                                      #
 ################################################################################
@@ -624,8 +632,9 @@ if (!(($OriginalLine +1) -eq $EndLine)) {
 # Add Save button handler
 $btn_Save.Add_Click({Set-GlobalVariables})
 
-#$Add_DoubleClick({Get-PluginDetail} )
-
+# Plugins
+$btn_SelectAll.Add_Click({Set-PluginsChecked $true})
+Write-Host $grid_Plugins.Rows.Count
 # Add Backup tab button actions
 $btn_BackupBrowse.Add_Click({Get-FileName $ScriptPath})
 $btn_BackupExport.Add_Click({Export-vCheckSettings $txtBackupLoc.Text})
